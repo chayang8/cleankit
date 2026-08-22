@@ -70,7 +70,7 @@ export default function App() {
 
       <header className="header">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">✦</span>
+          <span className="brand-mark" aria-hidden="true">🥟</span>
           <div>
             <h1>CleanKit</h1>
             <p className="tagline">Messy text in, clean text out. Nothing ever leaves your browser.</p>

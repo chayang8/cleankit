@@ -8,8 +8,12 @@
   --accent-soft: #eceafd;
   --danger: #c33c54;
   --shadow: 0 1px 2px rgba(20, 24, 40, 0.05), 0 12px 32px rgba(20, 24, 40, 0.07);
-  --mascot-body: #7c6bf0;
-  --mascot-highlight: #a99bff;
+  --mascot-body: #f0e2cf;
+  --mascot-highlight: #fffaf3;
+  --mascot-shade: #dcc7ac;
+  --mascot-scarf: #a3121f;
+  --mascot-scarf-light: #d43a44;
+  --mascot-halo: #d9e8b8;
   --radius: 14px;
   color-scheme: light;
 }
@@ -25,8 +29,12 @@
     --accent-soft: #23233c;
     --danger: #ff8095;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 14px 36px rgba(0, 0, 0, 0.35);
-    --mascot-body: #6d5ce7;
-    --mascot-highlight: #9d90ff;
+    --mascot-body: #e6d5bd;
+    --mascot-highlight: #fff6e8;
+    --mascot-shade: #c9ae8d;
+    --mascot-scarf: #96101c;
+    --mascot-scarf-light: #cf3540;
+    --mascot-halo: #6f7f4e;
     color-scheme: dark;
   }
 }
@@ -205,20 +213,49 @@ h1, h2 { margin: 0; }
   top: 0;
   left: 0;
   z-index: 50;
-  margin: 18px 0 0 18px; /* offset so it sits beside the cursor, never under it */
+  margin: 14px 0 0 16px; /* offset so it sits beside the cursor, never under it */
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.4s ease;
+  transition: opacity 0.45s ease;
   will-change: transform;
 }
 .mascot.is-awake { opacity: 1; }
-.mascot svg { display: block; filter: drop-shadow(0 6px 12px rgba(30, 20, 80, 0.25)); }
+.mascot svg { display: block; overflow: visible; filter: drop-shadow(0 8px 14px rgba(90, 60, 30, 0.22)); }
 
-.mascot-eye { fill: #1a1d29; }
+.mascot-eye { fill: #33261c; }
 .mascot-glint { fill: #fff; transition: opacity 0.1s; }
-.mascot-mouth { stroke: #1a1d29; }
-.mascot-blush { fill: #ff9ec4; opacity: 0.55; }
-.mascot-shadow { fill: rgba(30, 20, 80, 0.14); }
+.mascot-mouth { stroke: #33261c; }
+.mascot-blush { fill: #f09a95; opacity: 0.6; }
+.mascot-sheen { fill: #fff; opacity: 0.5; }
+.mascot-underlight { fill: var(--mascot-shade); opacity: 0.35; }
+.mascot-scarf-shade { fill: rgba(0, 0, 0, 0.18); }
+.mascot-shadow { fill: rgba(90, 60, 30, 0.16); }
+
+/* Scarf tails trail behind; they flick faster while the mascot is chasing. */
+.mascot-tail-a,
+.mascot-tail-b {
+  transform-origin: 55px 56px;
+  animation: tail-flap 2.4s ease-in-out infinite;
+}
+.mascot-tail-b { animation-delay: -0.5s; }
+.mascot.is-moving .mascot-tail-a,
+.mascot.is-moving .mascot-tail-b { animation-duration: 0.65s; }
+
+.mascot-arms {
+  transform-origin: 40px 52px;
+  animation: arm-sway 2.8s ease-in-out infinite;
+}
+.mascot.is-moving .mascot-arms { animation-duration: 0.8s; }
+
+@keyframes tail-flap {
+  0%, 100% { transform: rotate(-7deg); }
+  50% { transform: rotate(9deg); }
+}
+
+@keyframes arm-sway {
+  0%, 100% { transform: rotate(-2.5deg); }
+  50% { transform: rotate(2.5deg); }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .mascot { display: none; }

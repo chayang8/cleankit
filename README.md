@@ -1,4 +1,4 @@
-# CleanKit 🧹
+# CleanKit 🥟
 
 **Messy text in, clean text out.** A single-page, privacy-first text and data cleaner — and a friendly mascot that follows your cursor while you work.
 
@@ -14,7 +14,7 @@ Everything runs in your browser. No accounts, no uploads, no telemetry. Your tex
 - **Composable pipeline** — toggle tools on and they run in the order you picked them, with numbered badges
 - **Live stats** — characters, words, lines and how many characters were removed
 - **Copy / download** the result in one click; your pipeline is remembered in `localStorage`
-- **Broomy**, a cursor-following mascot that blinks, leans into turns and squishes when it hurries (disabled under `prefers-reduced-motion`)
+- **Doughy**, a cursor-following dumpling mascot with a red bandana — blinks, leans into turns, squishes when it hurries and flicks its scarf tails (disabled under `prefers-reduced-motion`)
 
 ## Quick start
 
