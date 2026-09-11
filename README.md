@@ -24,6 +24,25 @@ Big, but your call
   Total reclaimable 29 GB
 ```
 
+## The 30-second version
+
+Your editor has been keeping every old copy of every extension it ever updated. VS Code records the outdated version in `.obsolete` and leaves the directory on disk — a bug open upstream since [2019](https://github.com/microsoft/vscode/issues/78107) and still reported in [2024](https://github.com/microsoft/vscode/issues/213844). It is usually the largest single pile on a developer machine.
+
+```console
+$ npx @chayang8/cleankit extensions
+
+Superseded extension versions
+  openai.chatgpt                 7.3 GB  14 old copies · keeping 26.908.40401 · VS Code
+  anthropic.claude-code          3.8 GB  16 old copies · keeping 2.1.268 · VS Code
+  saoudrizwan.claude-dev         263 MB   3 old copies · keeping 4.1.17 · VS Code
+  …
+
+  Total 12 GB in 44 directories
+  The newest version of every extension is kept.
+```
+
+`npx @chayang8/cleankit extensions --clean` removes them, after telling you if an editor is still running. No install, nothing else touched — you can stop there and never read the rest of this page.
+
 ## Why this and not a disk visualiser
 
 A treemap tells you a folder is 14 GB. It cannot tell you whether deleting it costs you thirty seconds or a week.
@@ -64,10 +83,24 @@ Start here. The first command deletes nothing, so it is always safe to run:
 
 ```bash
 cleankit                              # scan everything, report, delete nothing
+cleankit extensions                   # just the editor extension pileup
 cleankit scan --html=~/report.html    # same, plus a shareable HTML page
 cleankit clean --dry-run              # run every safety check, delete nothing
 cleankit clean                        # show the plan, ask, then delete
 ```
+
+### `cleankit extensions`
+
+Lists every extension with more than one version on disk, newest first, and what the leftovers cost. Covers VS Code, VS Code Insiders, Cursor, Windsurf and VSCodium.
+
+```bash
+cleankit extensions                   # list, delete nothing
+cleankit extensions --clean           # remove the superseded copies, after confirming
+cleankit extensions --clean --dry-run # rehearse it
+cleankit extensions --html=~/ext.html # write the list as a page
+```
+
+The newest version of every extension is always kept. If an editor is running when you clean, CleanKit says so first — removing a directory out from under a live extension host is recoverable, but it wants a restart.
 
 ### Reading the report
 
@@ -191,12 +224,12 @@ Anything needing logic — version comparison, staleness, grouping — goes in `
 ## Development
 
 ```bash
-npm test          # 49 unit tests, including the safety guards
+npm test          # 54 unit tests, including the safety guards
 npm run typecheck
 npm run build
 ```
 
-Layout: `targets.ts` + `config.ts` (what to look at) → `scan.ts` / `heavy.ts` (measure it) → `cli.ts` (report it) → `clean.ts` + `safety.ts` (remove it, carefully) → `report.ts` (HTML) → `mascot.ts` (Sudsy).
+Layout: `targets.ts` + `config.ts` (what to look at) → `scan.ts` / `heavy.ts` (measure it) → `cli.ts` (report it) → `clean.ts` + `safety.ts` (remove it, carefully) → `editors.ts` (is an editor running?) → `report.ts` (HTML) → `mascot.ts` (Sudsy).
 
 ## License
 

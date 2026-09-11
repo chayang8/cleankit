@@ -8,12 +8,14 @@ import { mascot, mascotSaying } from './mascot.js'
 import { expandHome, HOME, tildify } from './safety.js'
 import { scanDsStore, scanNodeModules, scanTarget, type Finding } from './scan.js'
 import {
+  inspectEditorExtensions,
   scanAdvisories,
   scanBuildArtifacts,
   scanColdProjects,
   scanEditorExtensions,
   scanGvmPkgsets,
 } from './heavy.js'
+import { runningEditors } from './editors.js'
 import { loadConfig } from './config.js'
 import { writeHtmlReport } from './report.js'
 import { GROUP_LABELS, targetsForGroups, type Group, type Target } from './targets.js'
@@ -23,7 +25,7 @@ const VERSION: string = createRequire(import.meta.url)('../package.json').versio
 const ALL_GROUPS: Group[] = ['dev', 'xcode', 'system', 'bulk', 'advisory']
 
 interface Options {
-  command: 'scan' | 'clean' | 'help' | 'version'
+  command: 'scan' | 'clean' | 'extensions' | 'help' | 'version'
   groups: Group[]
   staleDays: number
   roots: string[]
@@ -31,6 +33,8 @@ interface Options {
   dryRun: boolean
   showMascot: boolean
   html: string | null
+  /** `extensions --clean`: remove the superseded copies instead of listing them. */
+  assumeClean: boolean
 }
 
 function parseArgs(argv: string[]): Options {
@@ -43,10 +47,12 @@ function parseArgs(argv: string[]): Options {
     dryRun: false,
     showMascot: true,
     html: null,
+    assumeClean: false,
   }
 
   for (const arg of argv) {
-    if (arg === 'scan' || arg === 'clean') options.command = arg
+    if (arg === 'scan' || arg === 'clean' || arg === 'extensions') options.command = arg
+    else if (arg === '--clean') options.assumeClean = true
     else if (arg === '--help' || arg === '-h') options.command = 'help'
     else if (arg === '--version' || arg === '-v') options.command = 'version'
     else if (arg === '--yes' || arg === '-y') options.assumeYes = true
@@ -101,6 +107,8 @@ ${color.bold('Usage')}
 ${color.bold('Commands')}
   scan            Report what could be freed. Deletes nothing. (default)
   clean           Delete after showing the plan and asking for confirmation.
+  extensions      List superseded VS Code / Cursor / Windsurf extension
+                  versions, newest kept. Add --clean to remove them.
 
 ${color.bold('Options')}
   --only=a,b      Limit to groups: dev, xcode, system, bulk, advisory
@@ -198,11 +206,88 @@ async function confirm(total: number): Promise<boolean> {
   }
 }
 
+/**
+ * `cleankit extensions` — the single-purpose view of the pile that is usually
+ * the biggest on a developer machine. Kept separate from `scan` so it can be
+ * run, understood and trusted on its own, without reading the rest of the tool.
+ */
+async function extensionsCommand(options: Options): Promise<void> {
+  const pileups = await inspectEditorExtensions()
+  if (pileups.length === 0) {
+    console.log(`\n${color.green('No superseded extension versions.')} Your editor is keeping up.`)
+    return
+  }
+
+  const total = pileups.reduce((sum, pileup) => sum + pileup.bytes, 0)
+  const copies = pileups.reduce((sum, pileup) => sum + pileup.stale.length, 0)
+  const nameWidth = Math.max(28, ...pileups.map((pileup) => pileup.id.length))
+
+  console.log(`\n${color.bold('Superseded extension versions')}`)
+  for (const pileup of pileups) {
+    console.log(
+      `  ${padEnd(pileup.id, nameWidth)} ${padStart(bytes(pileup.bytes), 9)}  ` +
+      `${color.dim(`${plural(pileup.stale.length, 'old copy').replace('copys', 'copies')} · keeping ${pileup.kept} · ${pileup.editor}`)}`,
+    )
+  }
+
+  console.log(`\n  ${color.bold('Total')} ${color.green(bytes(total))} in ${plural(copies, 'directory').replace('directorys', 'directories')}`)
+  console.log(color.dim('  The newest version of every extension is kept.'))
+
+  const finding = await scanEditorExtensions()
+  if (options.html) {
+    await writeHtmlReport(options.html, [finding])
+    console.log(color.dim(`  report written to ${tildify(options.html)}`))
+  }
+
+  if (!options.assumeClean) {
+    console.log(color.dim('\nNothing was deleted. Run `cleankit extensions --clean` to remove them.'))
+    return
+  }
+
+  const open = await runningEditors()
+  if (open.length > 0) {
+    console.log(
+      color.yellow(`\n  ${open.join(' and ')} ${open.length === 1 ? 'is' : 'are'} running.`) +
+        color.dim(' Quit first, or the extension host may need a restart afterwards.'),
+    )
+  }
+
+  if (!options.assumeYes && !options.dryRun) {
+    if (!process.stdin.isTTY) fail('extensions --clean needs a terminal to confirm — pass --yes')
+    if (!(await confirm(total))) {
+      console.log(`\n${mascotSaying('wary', color.dim('nothing touched.'))}`)
+      return
+    }
+  }
+
+  const result = await removeFindings([finding], { dryRun: options.dryRun })
+  const verb = options.dryRun ? 'Would free' : 'Freed'
+  console.log(
+    `\n${mascotSaying('done', color.green(`${verb} ${bytes(result.freed)}`))}\n` +
+      color.dim(`  ${result.removed.length} directories ${options.dryRun ? 'planned' : 'removed'}`),
+  )
+  reportSkipped(result.skipped)
+}
+
+function reportSkipped(skipped: { path: string; reason: string }[]): void {
+  if (skipped.length === 0) return
+  console.log(color.yellow(`\n  ${skipped.length} skipped:`))
+  for (const skip of skipped.slice(0, 10)) {
+    console.log(color.dim(`    ${tildify(skip.path)} — ${skip.reason}`))
+  }
+  if (skipped.length > 10) console.log(color.dim(`    + ${skipped.length - 10} more`))
+}
+
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2))
 
   if (options.command === 'help') return help()
   if (options.command === 'version') return console.log(VERSION)
+
+  if (options.command === 'extensions') {
+    if (options.showMascot) console.log(mascotSaying('scrub', color.dim('checking your editors...')))
+    return extensionsCommand(options)
+  }
 
   if (options.showMascot) {
     console.log(mascotSaying('scrub', color.dim('sniffing around...')))
@@ -255,15 +340,7 @@ async function main(): Promise<void> {
       color.dim(`  ${result.removed.length} paths ${options.dryRun ? 'planned' : 'removed'}`),
   )
 
-  if (result.skipped.length > 0) {
-    console.log(color.yellow(`\n  ${result.skipped.length} skipped:`))
-    for (const skip of result.skipped.slice(0, 10)) {
-      console.log(color.dim(`    ${tildify(skip.path)} — ${skip.reason}`))
-    }
-    if (result.skipped.length > 10) {
-      console.log(color.dim(`    + ${result.skipped.length - 10} more`))
-    }
-  }
+  reportSkipped(result.skipped)
 }
 
 main().catch((error) => {

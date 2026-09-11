@@ -87,3 +87,31 @@ describe('scanBuildArtifacts', () => {
     await (await import('node:fs/promises')).rm(root, { recursive: true, force: true })
   })
 })
+
+describe('groupExtensionVersions', () => {
+  it('orders each extension newest first', async () => {
+    const { groupExtensionVersions } = await import('./heavy.js')
+    const grouped = groupExtensionVersions([
+      'openai.chatgpt-26.825.32147-darwin-arm64',
+      'openai.chatgpt-26.908.31748-darwin-arm64',
+      'openai.chatgpt-26.903.71938-darwin-arm64',
+    ])
+    expect(grouped.get('openai.chatgpt')).toEqual([
+      'openai.chatgpt-26.908.31748-darwin-arm64',
+      'openai.chatgpt-26.903.71938-darwin-arm64',
+      'openai.chatgpt-26.825.32147-darwin-arm64',
+    ])
+  })
+
+  it('keeps single-version extensions as a group of one', async () => {
+    const { groupExtensionVersions } = await import('./heavy.js')
+    expect(groupExtensionVersions(['eamodio.gitlens-19.1.0']).get('eamodio.gitlens')).toEqual([
+      'eamodio.gitlens-19.1.0',
+    ])
+  })
+
+  it('skips entries that are not versioned extension directories', async () => {
+    const { groupExtensionVersions } = await import('./heavy.js')
+    expect(groupExtensionVersions(['extensions.json', '.obsolete']).size).toBe(0)
+  })
+})

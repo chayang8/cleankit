@@ -67,20 +67,100 @@ async function sizedEntries(base: string, names: string[]): Promise<Entry[]> {
   return entries
 }
 
-/** Superseded VS Code / Cursor / Windsurf extension versions. */
-export async function scanEditorExtensions(): Promise<Finding> {
-  const roots = [home('.vscode', 'extensions'), home('.cursor', 'extensions'), home('.windsurf', 'extensions')]
-  const entries: Entry[] = []
+/** Where the VS Code family keeps installed extensions. */
+const EXTENSION_ROOTS: { editor: string; dir: string }[] = [
+  { editor: 'VS Code', dir: home('.vscode', 'extensions') },
+  { editor: 'VS Code Insiders', dir: home('.vscode-insiders', 'extensions') },
+  { editor: 'Cursor', dir: home('.cursor', 'extensions') },
+  { editor: 'Windsurf', dir: home('.windsurf', 'extensions') },
+  { editor: 'VSCodium', dir: home('.vscode-oss', 'extensions') },
+]
 
-  for (const root of roots) {
+export interface ExtensionPileup {
+  editor: string
+  id: string
+  /** The version that stays installed. */
+  kept: string
+  /** Superseded copies, newest first. */
+  stale: { version: string; path: string; bytes: number }[]
+  bytes: number
+}
+
+/**
+ * Groups every directory in an extensions folder by extension id, newest
+ * version first. Exported for testing; the version ordering is the whole
+ * correctness question here, since the wrong order deletes the live copy.
+ */
+export function groupExtensionVersions(names: string[]): Map<string, string[]> {
+  const byId = new Map<string, { name: string; version: string }[]>()
+  for (const name of names) {
+    const parsed = parseExtensionDir(name)
+    if (!parsed) continue
+    const list = byId.get(parsed.id) ?? []
+    list.push({ name, version: parsed.version })
+    byId.set(parsed.id, list)
+  }
+
+  const grouped = new Map<string, string[]>()
+  for (const [id, versions] of byId) {
+    versions.sort((a, b) => compareVersions(b.version, a.version))
+    grouped.set(id, versions.map((entry) => entry.name))
+  }
+  return grouped
+}
+
+/**
+ * Per-extension detail for the `extensions` command: which version stays,
+ * which copies are dead weight, and what each one costs.
+ *
+ * This exists because editors in the VS Code family record an updated
+ * extension in `.obsolete` but leave the old directory on disk — a bug open
+ * upstream since 2019 — so the leftovers accumulate silently, one copy per
+ * update, and on a machine with a few fast-moving extensions they add up to
+ * more than every other cache combined.
+ */
+export async function inspectEditorExtensions(): Promise<ExtensionPileup[]> {
+  const pileups: ExtensionPileup[] = []
+
+  for (const { editor, dir } of EXTENSION_ROOTS) {
     let names: string[]
     try {
-      names = await readdir(root)
+      names = await readdir(dir)
     } catch {
-      continue
+      continue // editor not installed
     }
-    entries.push(...(await sizedEntries(root, supersededExtensions(names))))
+
+    for (const [id, versions] of groupExtensionVersions(names)) {
+      if (versions.length < 2) continue
+      const [keep, ...superseded] = versions
+      const stale = []
+      for (const name of superseded) {
+        const target = path.join(dir, name)
+        stale.push({
+          version: parseExtensionDir(name)?.version ?? name,
+          path: target,
+          bytes: await diskUsage(target),
+        })
+      }
+      pileups.push({
+        editor,
+        id,
+        kept: parseExtensionDir(keep)?.version ?? keep,
+        stale,
+        bytes: stale.reduce((sum, entry) => sum + entry.bytes, 0),
+      })
+    }
   }
+
+  return pileups.sort((a, b) => b.bytes - a.bytes)
+}
+
+/** Superseded VS Code / Cursor / Windsurf extension versions, as one finding. */
+export async function scanEditorExtensions(): Promise<Finding> {
+  const pileups = await inspectEditorExtensions()
+  const entries: Entry[] = pileups.flatMap((pileup) =>
+    pileup.stale.map((copy) => ({ path: copy.path, bytes: copy.bytes })),
+  )
 
   return {
     targetId: 'editor-extensions',
