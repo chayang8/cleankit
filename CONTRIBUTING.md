@@ -1,12 +1,13 @@
 # Contributing to CleanKit
 
-Thanks for helping out. CleanKit is deliberately small and dependency-light — keep it that way and almost any change is welcome.
+CleanKit deletes files off people's machines. That shapes every rule below.
 
 ## Setup
 
 ```bash
 npm install
-npm run dev
+npm run build
+node dist/cli.js scan
 ```
 
 ## Before opening a pull request
@@ -14,27 +15,26 @@ npm run dev
 ```bash
 npm run typecheck
 npm test
-npm run build
+node dist/cli.js clean --dry-run   # sanity-check your target on a real machine
 ```
 
-## Adding a cleaning tool
+## Adding a cleanup target
 
-Tools live in `src/lib/clean.ts` and are pure `(input: string) => string` functions.
+1. Add an entry to `TARGETS` in `src/targets.ts`.
+2. Write `recovery` honestly. If the data is gone for good, start the string with `GONE` — the CLI highlights those in yellow.
+3. Prefer `mode: 'contents'` over `'self'`: emptying a cache directory is safer than removing the directory an app expects to exist.
+4. Add a test.
 
-1. Write the function next to the other operations.
-2. Add its id to the `OperationId` union.
-3. Register it in `OPERATIONS` with a `label`, a one-sentence `description` and a `group`.
-4. Add a test case in `src/lib/clean.test.ts` — including an edge case (empty input, already-clean input).
+For anything that needs logic — version comparison, staleness, grouping — add a scanner to `src/heavy.ts` that returns a `Finding`, and keep the decision logic in a pure exported function so it can be tested without touching a filesystem.
 
-The tool list in the UI is generated from `OPERATIONS`, so there is nothing else to wire up.
+## Rules
 
-## Ground rules
-
-- **No network calls.** CleanKit is client-side only; a tool that phones home will not be merged.
-- **No new runtime dependencies** unless there is no reasonable alternative.
-- Keep operations pure and order-independent where possible.
-- Match the existing code style — the repo has no formatter config on purpose; just look at the neighbours.
+- **Allowlist only.** Never add a heuristic that deletes "whatever is big". If a pile needs human judgement, add it as an `advisory` finding with the command a person should run.
+- **Never widen the safety guards** in `src/safety.ts` to make a target work. If a target needs a protected directory, the target is wrong.
+- **No runtime dependencies.** Dev dependencies for tests and types only.
+- **No network calls, no telemetry.**
+- Match the surrounding code style; the repo has no formatter config on purpose.
 
 ## Reporting bugs
 
-Include the input text (or a minimal version of it), which tools were enabled and in what order, and what you expected.
+Include the command you ran, the output (`--no-mascot` keeps it compact), your macOS and Node versions. If CleanKit deleted something it should not have, say so first — that is the highest-priority bug class in this project.

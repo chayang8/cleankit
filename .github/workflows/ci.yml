@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,3 +18,5 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # The scan must be safe to run anywhere: it deletes nothing.
+      - run: node dist/cli.js scan --no-mascot
