@@ -26,8 +26,17 @@ Big, but your call
 
 ## Install
 
+From npm:
+
 ```bash
-git clone https://github.com/OWNER/cleankit.git
+npm install -g @chayang8/cleankit
+cleankit
+```
+
+From source:
+
+```bash
+git clone https://github.com/chayang8/cleankit.git
 cd cleankit
 npm install
 npm run build

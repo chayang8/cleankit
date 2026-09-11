@@ -1,15 +1,28 @@
 {
-  "name": "cleankit",
+  "name": "@chayang8/cleankit",
   "private": false,
   "version": "0.1.0",
   "description": "Sudsy the soap bubble scrubs dev caches, duplicate installs and stale node_modules off your Mac.",
   "license": "MIT",
   "type": "module",
-  "bin": { "cleankit": "dist/cli.js" },
-  "files": ["dist"],
-  "engines": { "node": ">=20" },
-  "homepage": "https://github.com/OWNER/cleankit",
-  "keywords": ["cli", "disk", "cleanup", "cache", "macos", "node_modules"],
+  "bin": {
+    "cleankit": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "homepage": "https://github.com/chayang8/cleankit#readme",
+  "keywords": [
+    "cli",
+    "disk",
+    "cleanup",
+    "cache",
+    "macos",
+    "node_modules"
+  ],
   "scripts": {
     "build": "tsc -b",
     "dev": "npm run build && node dist/cli.js",
@@ -22,5 +35,16 @@
     "@types/node": "^22.10.2",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chayang8/cleankit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/chayang8/cleankit/issues"
+  },
+  "author": "chayang8"
 }
