@@ -1,21 +1,25 @@
 #!/usr/bin/env node
 import path from 'node:path'
+import { createRequire } from 'node:module'
 import { createInterface } from 'node:readline/promises'
 import { removeFindings } from './clean.js'
 import { bytes, color, padEnd, padStart } from './format.js'
 import { mascot, mascotSaying } from './mascot.js'
-import { HOME, tildify } from './safety.js'
+import { expandHome, HOME, tildify } from './safety.js'
 import { scanDsStore, scanNodeModules, scanTarget, type Finding } from './scan.js'
 import {
   scanAdvisories,
+  scanBuildArtifacts,
   scanColdProjects,
   scanEditorExtensions,
   scanGvmPkgsets,
 } from './heavy.js'
+import { loadConfig } from './config.js'
 import { writeHtmlReport } from './report.js'
-import { GROUP_LABELS, targetsForGroups, type Group } from './targets.js'
+import { GROUP_LABELS, targetsForGroups, type Group, type Target } from './targets.js'
 
-const VERSION = '0.1.0'
+// Read from the manifest so `--version` cannot drift from what was published.
+const VERSION: string = createRequire(import.meta.url)('../package.json').version
 const ALL_GROUPS: Group[] = ['dev', 'xcode', 'system', 'bulk', 'advisory']
 
 interface Options {
@@ -48,18 +52,33 @@ function parseArgs(argv: string[]): Options {
     else if (arg === '--yes' || arg === '-y') options.assumeYes = true
     else if (arg === '--dry-run') options.dryRun = true
     else if (arg === '--no-mascot') options.showMascot = false
-    else if (arg.startsWith('--html=')) options.html = path.resolve(arg.slice('--html='.length))
+    else if (arg.startsWith('--html=')) {
+      options.html = path.resolve(expandHome(arg.slice('--html='.length)))
+    }
     else if (arg.startsWith('--only=')) {
-      const requested = arg.slice('--only='.length).split(',') as Group[]
+      const requested = arg
+        .slice('--only='.length)
+        .split(',')
+        .map((group) => group.trim())
+        .filter((group) => group !== '') as Group[]
+      if (requested.length === 0) fail(`--only needs at least one group: ${ALL_GROUPS.join(', ')}`)
       const unknown = requested.filter((group) => !ALL_GROUPS.includes(group))
-      if (unknown.length > 0) fail(`unknown group: ${unknown.join(', ')}`)
+      if (unknown.length > 0) {
+        fail(`unknown group: ${unknown.join(', ')} (known: ${ALL_GROUPS.join(', ')})`)
+      }
       options.groups = requested
     } else if (arg.startsWith('--stale-days=')) {
       const days = Number(arg.slice('--stale-days='.length))
       if (!Number.isFinite(days) || days < 0) fail(`--stale-days needs a number, got ${arg}`)
       options.staleDays = days
     } else if (arg.startsWith('--root=')) {
-      options.roots = arg.slice('--root='.length).split(',').map((root) => path.resolve(root))
+      const roots = arg
+        .slice('--root='.length)
+        .split(',')
+        .map((root) => root.trim())
+        .filter((root) => root !== '')
+      if (roots.length === 0) fail('--root needs at least one directory')
+      options.roots = roots.map((root) => path.resolve(expandHome(root)))
     } else fail(`unknown argument: ${arg}`)
   }
 
@@ -92,6 +111,11 @@ ${color.bold('Options')}
   --dry-run       With clean: run every safety check, delete nothing
   -y, --yes       Skip the confirmation prompt
   --no-mascot     No Sudsy
+
+${color.bold('Custom targets')}
+  Add your own cache paths in ~/.cleankitrc.json:
+  { "targets": [{ "id": "sbt", "label": "sbt cache", "group": "dev",
+                  "recovery": "refetched on next build", "paths": ["~/.sbt"] }] }
   -h, --help      This
   -v, --version   Print version
 
@@ -100,12 +124,17 @@ ${color.dim('touched. Documents, Desktop, Downloads and keys are hard-blocked, a
 ${color.dim('"Big, but your call" findings print a command and are never deleted.')}`)
 }
 
-async function collect(options: Options): Promise<Finding[]> {
+async function collect(options: Options, extraTargets: Target[]): Promise<Finding[]> {
+  const custom = extraTargets.filter((target) => options.groups.includes(target.group))
   const findings = await Promise.all([
     ...targetsForGroups(options.groups).map(scanTarget),
+    ...custom.map(scanTarget),
     options.groups.includes('dev')
       ? scanNodeModules(options.roots, options.staleDays)
       : emptyFinding('node-modules', 'dev'),
+    options.groups.includes('dev')
+      ? scanBuildArtifacts(options.roots, options.staleDays)
+      : emptyFinding('build-artifacts', 'dev'),
     options.groups.includes('system')
       ? scanDsStore(options.roots)
       : emptyFinding('ds-store', 'system'),
@@ -179,9 +208,13 @@ async function main(): Promise<void> {
     console.log(mascotSaying('scrub', color.dim('sniffing around...')))
   }
 
-  const findings = await collect(options)
+  const config = await loadConfig()
+  for (const warning of config.warnings) console.error(color.yellow(`cleankit: ${warning}`))
+
+  const findings = await collect(options, config.targets)
   if (findings.length === 0) {
     console.log(`\n${color.green('Nothing to clean.')} Machine is already tidy.`)
+    if (config.file) console.log(color.dim(`  (extra targets loaded from ${tildify(config.file)})`))
     return
   }
 
@@ -191,6 +224,13 @@ async function main(): Promise<void> {
   if (options.html) {
     await writeHtmlReport(options.html, findings)
     console.log(color.dim(`  report written to ${tildify(options.html)}`))
+  }
+
+  const deletable = findings.filter((finding) => finding.group !== 'advisory')
+  if (options.command === 'clean' && findings.length > deletable.length) {
+    console.log(
+      color.dim('\n  "Big, but your call" findings are reports — clean will not touch them.'),
+    )
   }
 
   if (options.command === 'scan') {
@@ -208,7 +248,7 @@ async function main(): Promise<void> {
     }
   }
 
-  const result = await removeFindings(findings, { dryRun: options.dryRun })
+  const result = await removeFindings(deletable, { dryRun: options.dryRun })
   const verb = options.dryRun ? 'Would free' : 'Freed'
   console.log(
     `\n${mascotSaying('done', color.green(`${verb} ${bytes(result.freed)}`))}\n` +
@@ -219,6 +259,9 @@ async function main(): Promise<void> {
     console.log(color.yellow(`\n  ${result.skipped.length} skipped:`))
     for (const skip of result.skipped.slice(0, 10)) {
       console.log(color.dim(`    ${tildify(skip.path)} — ${skip.reason}`))
+    }
+    if (result.skipped.length > 10) {
+      console.log(color.dim(`    + ${result.skipped.length - 10} more`))
     }
   }
 }

@@ -68,6 +68,18 @@ export async function resolveDeletable(candidate: string): Promise<string> {
   return resolved
 }
 
+/**
+ * Expands a leading `~` to the home directory before resolving. The shell
+ * does not expand a tilde that follows `=` (as in `--root=~/code`), so
+ * without this the path silently resolves under the current directory and the
+ * scan quietly finds nothing.
+ */
+export function expandHome(target: string): string {
+  if (target === '~') return HOME
+  if (target.startsWith('~/')) return path.join(HOME, target.slice(2))
+  return target
+}
+
 /** Replaces the home prefix with `~` for display. */
 export function tildify(target: string): string {
   return target.startsWith(HOME) ? `~${target.slice(HOME.length)}` : target

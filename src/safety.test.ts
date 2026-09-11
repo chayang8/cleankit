@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { mkdtemp, mkdir, symlink, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { HOME, resolveDeletable, tildify, UnsafePathError } from './safety.js'
+import { expandHome, HOME, resolveDeletable, tildify, UnsafePathError } from './safety.js'
 
 let sandbox: string
 
@@ -69,5 +69,25 @@ describe('tildify', () => {
 
   it('leaves other paths alone', () => {
     expect(tildify('/usr/lib')).toBe('/usr/lib')
+  })
+})
+
+describe('expandHome', () => {
+  it('expands a bare tilde', () => {
+    expect(expandHome('~')).toBe(HOME)
+  })
+
+  it('expands a leading tilde path', () => {
+    expect(expandHome('~/Developer/app')).toBe(path.join(HOME, 'Developer', 'app'))
+  })
+
+  it('leaves absolute and relative paths alone', () => {
+    expect(expandHome('/tmp/x')).toBe('/tmp/x')
+    expect(expandHome('./x')).toBe('./x')
+  })
+
+  it('does not expand a tilde that is not the first segment', () => {
+    expect(expandHome('/tmp/~/x')).toBe('/tmp/~/x')
+    expect(expandHome('~user/x')).toBe('~user/x')
   })
 })

@@ -18,6 +18,10 @@ npm test
 node dist/cli.js clean --dry-run   # sanity-check your target on a real machine
 ```
 
+## Before writing code
+
+If you only need a cache path CleanKit does not know about **for yourself**, you do not need a pull request — put it in `~/.cleankitrc.json`. Send a PR when the path is standard for a tool other people use too.
+
 ## Adding a cleanup target
 
 1. Add an entry to `TARGETS` in `src/targets.ts`.

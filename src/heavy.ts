@@ -231,3 +231,91 @@ export async function scanColdProjects(roots: string[], staleDays: number, limit
     bytes: entries.reduce((sum, entry) => sum + entry.bytes, 0),
   }
 }
+
+/**
+ * Build output directories, keyed by the marker file that proves the project
+ * can regenerate them. Requiring the marker is what makes this safe: a folder
+ * called `dist` with no `package.json` beside it is somebody's data, not a
+ * build, and is left alone.
+ */
+const BUILD_ARTIFACTS: { dir: string; marker: string; tool: string }[] = [
+  { dir: 'target', marker: 'Cargo.toml', tool: 'cargo build' },
+  { dir: '.next', marker: 'package.json', tool: 'next build' },
+  { dir: '.nuxt', marker: 'package.json', tool: 'nuxt build' },
+  { dir: '.svelte-kit', marker: 'package.json', tool: 'vite build' },
+  { dir: 'dist', marker: 'package.json', tool: 'npm run build' },
+  { dir: 'build', marker: 'package.json', tool: 'npm run build' },
+  { dir: '.dart_tool', marker: 'pubspec.yaml', tool: 'flutter build' },
+  { dir: '.gradle', marker: 'build.gradle', tool: 'gradle build' },
+  { dir: '.gradle', marker: 'build.gradle.kts', tool: 'gradle build' },
+  { dir: '__pycache__', marker: 'pyproject.toml', tool: 'python' },
+  { dir: '.pytest_cache', marker: 'pyproject.toml', tool: 'pytest' },
+  { dir: '.turbo', marker: 'package.json', tool: 'turbo' },
+]
+
+const SKIP_WALK = new Set(['node_modules', '.git', 'Library', 'Applications', '.Trash'])
+
+async function exists(target: string): Promise<boolean> {
+  try {
+    await stat(target)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Regenerable build output in projects that have been idle for `staleDays`.
+ * The idle requirement matters: wiping `target/` in a repo someone is working
+ * in today costs them a long rebuild for no reason.
+ */
+export async function scanBuildArtifacts(roots: string[], staleDays: number): Promise<Finding> {
+  const cutoff = Date.now() - staleDays * 24 * 60 * 60 * 1000
+  const entries: Entry[] = []
+
+  const visit = async (dir: string, depth: number): Promise<void> => {
+    if (depth > 4) return
+    let names
+    try {
+      names = await readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    const present = new Set(names.map((entry) => entry.name))
+
+    for (const artifact of BUILD_ARTIFACTS) {
+      if (!present.has(artifact.dir) || !present.has(artifact.marker)) continue
+      const output = path.join(dir, artifact.dir)
+      let info
+      try {
+        info = await stat(output)
+      } catch {
+        continue
+      }
+      if (info.mtimeMs >= cutoff) continue
+      entries.push({ path: output, bytes: await diskUsage(output) })
+    }
+
+    const subdirs = names.filter(
+      (entry) =>
+        entry.isDirectory() &&
+        !entry.isSymbolicLink() &&
+        !entry.name.startsWith('.') &&
+        !SKIP_WALK.has(entry.name),
+    )
+    for (const entry of subdirs) await visit(path.join(dir, entry.name), depth + 1)
+  }
+
+  for (const root of roots) {
+    if (await exists(root)) await visit(root, 0)
+  }
+
+  return {
+    targetId: 'build-artifacts',
+    group: 'dev',
+    label: `Stale build output (untouched ${staleDays}+ days)`,
+    recovery: 'rebuilt by the project toolchain',
+    entries,
+    bytes: entries.reduce((sum, entry) => sum + entry.bytes, 0),
+  }
+}
